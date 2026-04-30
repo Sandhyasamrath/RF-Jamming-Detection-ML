@@ -1,0 +1,25 @@
+# Virtual environment (anywhere in project)
+venv/
+**/venv/
+python_backend/venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# ML model files
+*.pkl
+
+# IDE folders
+.idea/
+.vscode/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Raw datasets (too large for git)
+data/raw/
+
+# Generated plots
+plots/*.png
