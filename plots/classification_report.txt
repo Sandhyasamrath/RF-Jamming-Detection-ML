@@ -1,0 +1,11 @@
+RF Jamming Detection - Classification Report
+==================================================
+              precision    recall  f1-score   support
+
+      Normal       1.00      1.00      1.00       600
+    Weak_Jam       1.00      1.00      1.00       600
+  Strong_Jam       1.00      1.00      1.00       600
+
+    accuracy                           1.00      1800
+   macro avg       1.00      1.00      1.00      1800
+weighted avg       1.00      1.00      1.00      1800
