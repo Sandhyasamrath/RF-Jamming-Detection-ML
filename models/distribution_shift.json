@@ -1,0 +1,7 @@
+{
+  "baseline": 1.0,
+  "mean_shift_5pct": 0.9994,
+  "scale_shift_10pct": 0.9967,
+  "heavy_noise_15pct": 0.9917,
+  "combined_shift": 0.995
+}
