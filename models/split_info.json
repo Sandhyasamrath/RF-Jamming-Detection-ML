@@ -1,0 +1,22 @@
+{
+  "feature_cols": [
+    "RSSI",
+    "SNR",
+    "PDR",
+    "Packet_Loss",
+    "Noise_Power",
+    "FFT_Mean",
+    "FFT_Variance",
+    "Peak_Frequency",
+    "RSSI_MA5",
+    "SNR_MA5",
+    "PDR_MA5",
+    "FFT_Energy_Ratio",
+    "Signal_Quality_Index",
+    "RSSI_ZScore",
+    "SNR_ZScore",
+    "FFT_Mean_ZScore"
+  ],
+  "test_size": 0.2,
+  "random_state": 42
+}
