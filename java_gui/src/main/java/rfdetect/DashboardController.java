@@ -74,14 +74,27 @@ public class DashboardController implements Initializable {
         clock.setCycleCount(Timeline.INDEFINITE);
         clock.play();
 
-        apiStatusLabel.setText("API: Simulation Mode");
+        new Thread(() -> {
+            boolean alive = ApiClient.checkHealth();
+            Platform.runLater(() -> {
+                if (alive) {
+                    apiStatusLabel.setText("API: Connected");
+                    apiStatusLabel.setStyle("-fx-text-fill: #4caf50; -fx-font-size: 13px;");
+                } else {
+                    apiStatusLabel.setText("API: Offline");
+                    apiStatusLabel.setStyle("-fx-text-fill: #f44336; -fx-font-size: 13px;");
+                    footerLabel.setText("WARNING: Flask API not reachable. Start it with: python app.py");
+                }
+            });
+        }).start();
+
         System.out.println("Dashboard initialized successfully");
     }
 
     private void startSimulation() {
         startBtn.setDisable(true);
         stopBtn.setDisable(false);
-        footerLabel.setText("Live detection running... feeding simulated RF data every 1s");
+        footerLabel.setText("Live detection running... calling Flask API every 1s");
         simulator = new Timeline(new KeyFrame(Duration.seconds(1),
             e -> generateAndPredict()));
         simulator.setCycleCount(Timeline.INDEFINITE);
@@ -98,74 +111,85 @@ public class DashboardController implements Initializable {
     private void generateAndPredict() {
         timeStep++;
         int scenarioIdx = (timeStep / 8) % 3;
-        double rssi, snr, pdr, confidence;
-        int prediction;
-        String label;
+        double rssi, snr, pdr, packetLoss, noisePower, fftMean, fftVariance, peakFreq;
 
         if (scenarioIdx == 0) {
             rssi = -55 - rng.nextDouble() * 15;
             snr  =  25 + rng.nextDouble() * 10;
             pdr  = 0.92 + rng.nextDouble() * 0.08;
-            confidence = 0.95 + rng.nextDouble() * 0.05;
-            prediction = 0;
-            label = "NORMAL";
+            packetLoss = 1.0 - pdr;
+            noisePower = -98 + rng.nextDouble() * 5;
+            fftMean = 0.10 + rng.nextDouble() * 0.18;
+            fftVariance = 0.01 + rng.nextDouble() * 0.03;
+            peakFreq = 2400 + rng.nextDouble() * 25;
         } else if (scenarioIdx == 1) {
             rssi = -70 - rng.nextDouble() * 13;
             snr  =  12 + rng.nextDouble() * 10;
             pdr  = 0.65 + rng.nextDouble() * 0.20;
-            confidence = 0.85 + rng.nextDouble() * 0.10;
-            prediction = 1;
-            label = "WEAK JAMMING";
+            packetLoss = 1.0 - pdr;
+            noisePower = -92 + rng.nextDouble() * 9;
+            fftMean = 0.27 + rng.nextDouble() * 0.30;
+            fftVariance = 0.04 + rng.nextDouble() * 0.10;
+            peakFreq = 2418 + rng.nextDouble() * 37;
         } else {
             rssi = -85 - rng.nextDouble() * 13;
             snr  =   2 + rng.nextDouble() * 8;
             pdr  = 0.10 + rng.nextDouble() * 0.40;
-            confidence = 0.92 + rng.nextDouble() * 0.08;
-            prediction = 2;
-            label = "STRONG JAMMING";
+            packetLoss = 1.0 - pdr;
+            noisePower = -84 + rng.nextDouble() * 14;
+            fftMean = 0.55 + rng.nextDouble() * 0.43;
+            fftVariance = 0.13 + rng.nextDouble() * 0.25;
+            peakFreq = 2445 + rng.nextDouble() * 53;
         }
 
-        final double fRssi = rssi, fSnr = snr, fPdr = pdr, fConf = confidence;
-        final int fPred = prediction;
-        final String fLabel = label;
+        final double fRssi = rssi, fSnr = snr, fPdr = pdr;
+        final double fPL = packetLoss, fNP = noisePower;
+        final double fFM = fftMean, fFV = fftVariance, fPF = peakFreq;
 
-        Platform.runLater(() -> {
-            rssiSeries.getData().add(new XYChart.Data<>(timeStep, fRssi));
-            snrSeries.getData().add(new XYChart.Data<>(timeStep, fSnr));
-            pdrSeries.getData().add(new XYChart.Data<>(timeStep, fPdr));
+        new Thread(() -> {
+            ApiClient.PredictionResult result = ApiClient.predict(
+                fRssi, fSnr, fPdr, fPL, fNP, fFM, fFV, fPF
+            );
 
-            if (rssiSeries.getData().size() > MAX_POINTS) {
-                rssiSeries.getData().remove(0);
-                snrSeries.getData().remove(0);
-                pdrSeries.getData().remove(0);
-            }
+            Platform.runLater(() -> {
+                rssiSeries.getData().add(new XYChart.Data<>(timeStep, fRssi));
+                snrSeries.getData().add(new XYChart.Data<>(timeStep, fSnr));
+                pdrSeries.getData().add(new XYChart.Data<>(timeStep, fPdr));
 
-            updateAlertPanel(fPred, fLabel, fConf);
-            inferenceLabel.setText(String.format("Inference: %.1f ms",
-                25 + rng.nextDouble() * 20));
-        });
+                if (rssiSeries.getData().size() > MAX_POINTS) {
+                    rssiSeries.getData().remove(0);
+                    snrSeries.getData().remove(0);
+                    pdrSeries.getData().remove(0);
+                }
+
+                if (result.success) {
+                    updateAlertPanel(result);
+                    inferenceLabel.setText(String.format("Inference: %.1f ms",
+                        result.inferenceMs));
+                } else {
+                    statusLabel.setText("API ERROR");
+                    confidenceLabel.setText(result.error);
+                    inferenceLabel.setText("Inference: -- ms");
+                }
+            });
+        }).start();
     }
 
-    private void updateAlertPanel(int prediction, String label, double confidence) {
-        statusLabel.setText(label);
-        confidenceLabel.setText(String.format("Confidence: %.1f%%", confidence * 100));
+    private void updateAlertPanel(ApiClient.PredictionResult result) {
+        statusLabel.setText(result.label.replace("_", " ").toUpperCase());
+        confidenceLabel.setText(String.format("Confidence: %.1f%%",
+            result.confidence * 100));
 
-        double[] probs = new double[3];
-        probs[prediction] = confidence;
-        double remaining = 1.0 - confidence;
-        for (int i = 0; i < 3; i++) {
-            if (i != prediction) probs[i] = remaining / 2;
-        }
-
-        probNormalLabel.setText(String.format("Normal: %.3f", probs[0]));
-        probWeakLabel.setText(String.format("Weak Jam: %.3f", probs[1]));
-        probStrongLabel.setText(String.format("Strong Jam: %.3f", probs[2]));
+        probNormalLabel.setText(String.format("Normal: %.3f", result.probNormal));
+        probWeakLabel.setText(String.format("Weak Jam: %.3f", result.probWeak));
+        probStrongLabel.setText(String.format("Strong Jam: %.3f", result.probStrong));
 
         String color;
-        switch (prediction) {
-            case 0: color = "#4caf50"; break;  // GREEN
-            case 1: color = "#ffa500"; break;  // ORANGE
-            default: color = "#f44336"; break; // RED
+        switch (result.alertLevel) {
+            case "GREEN":  color = "#4caf50"; break;
+            case "YELLOW": color = "#ffa500"; break;
+            case "RED":    color = "#f44336"; break;
+            default:       color = "#9e9e9e"; break;
         }
         alertIndicator.setStyle(
             "-fx-background-color: " + color + "; -fx-background-radius: 5;"
